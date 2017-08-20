@@ -65,33 +65,36 @@ public:
 			const double change_tendency_A,
 			const double change_tendency_B,
 			const double migrationRate,
+			const double interactionRate,
 			const double interactionTendencyOther):
 		_change_tendency_A(change_tendency_A),
 		_change_tendency_B(change_tendency_B),
 		_migrationRate(migrationRate),
+		_interactionRate(interactionRate),
 		_interactionTendencyOther(interactionTendencyOther){}
 
 	const double _change_tendency_A;
 	const double _change_tendency_B;
 	const double _migrationRate;
+	const double _interactionRate;
 	const double _interactionTendencyOther;
 };
 
 static void parameterCombinations(std::vector<Parameters> &parameters) {
-    const std::vector<double> values{ 0.001, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0 };
-	const std::vector<double> values2{ 0.001, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095, 0.1 };
+	const std::vector<double> valuesA{1.0};
+	const std::vector<double> valuesB{0.0, 0.25, 0.5, 0.75, 1.0};
+	const std::vector<std::vector<double>> values2{{0.01,0.99}, {0.01,0.19}, {0.01, 0.09}, {0.05, 0.95	}, {0.05, 0.45}, {0.1, 0.9}};
 	const std::vector<double> values3{0.1,0.5};
-	parameters.reserve(18522);
-			for (double change_tendency_A : values)
-				for (double change_tendency_B : values)
-					for (double migrationRate : values2)
+	parameters.reserve(60);
+			for (double change_tendency_A : valuesA)
+				for (double change_tendency_B : valuesB)
+					for (std::vector<double> migration_interaction: values2)
 						for (double interactionTendencyOther : values3)
                 			parameters.push_back(Parameters(change_tendency_A,
-							change_tendency_B, migrationRate, interactionTendencyOther));
+							change_tendency_B, migration_interaction[0], migration_interaction[1], interactionTendencyOther));
 }
 
 int main() {
-	const double MAX = 1e6; //endtime, i.e. every simulation has 1e6 events
 	const int populationSize = 1000;
 
 	const std::vector<int> seed;
@@ -103,10 +106,13 @@ int main() {
     // 12 parallel runs
 #pragma omp parallel for num_threads(12)
 	for (int i = 0; i < parameters.size(); ++i) {
-			const Parameters &item = parameters[i];
+		std::cout << "\ncomb " << i << "\n";
+		const Parameters &item = parameters[i];
+		double MAX = 1e6/ (item._migrationRate + item._interactionRate); //endtime, i.e. every simulation has 1e6 events 
 			double changeTendencyA = item._change_tendency_A;
 			double changeTendencyB = item._change_tendency_B;
 			const double migrationRate = item._migrationRate;
+			const double interactionRate = item._interactionRate;
 			double interactionTendencyOther_A = item._interactionTendencyOther;
 			double interactionTendencyOther_B = item._interactionTendencyOther;
 			std::string outputName = std::to_string(interactionTendencyOther_A) + "-1.csv";
@@ -114,7 +120,7 @@ int main() {
 			std::string outputName2 = std::to_string(interactionTendencyOther_A) + "-2.csv";
 			std::ofstream myOutput2(outputName2, std::ios_base::app);
 			for (int i = 0; i < 10; ++i) {
-				double count = 0.0;
+				int count = 0;
 				std::vector<Individual> population;
 				population.reserve(populationSize);
 				const Individual individualA(Individual::Culture::A, changeTendencyA, interactionTendencySame_A, interactionTendencyOther_A);
@@ -124,22 +130,38 @@ int main() {
 				double ChangeTendDif = changeTendencyA - changeTendencyB;
 				while (count < MAX) {
 					++count;
+					// in this part, there is now a change of the code to allow both immigration and interaction to occur with independent probs
 					double probabilityMigrate = getRandomUniform(rng);
-					if (probabilityMigrate <= migrationRate) {
-						migration(population, populationSize, individualA, rng);
+					double probabilityInteract = getRandomUniform(rng);
+					double whichonefirst = getRandomUniform(rng); //we randomize the order of both events in each time step
+					
+					if (whichonefirst < 0.5)
+					{
+						if (probabilityMigrate <= migrationRate) {
+							migration(population, populationSize, individualA, rng);
+						}
+						if (probabilityInteract <= interactionRate) {
+							interact(population, populationSize, rng);
+						}
 					}
-					else {
-						interact(population, populationSize, rng);
+					else
+					{
+						if (probabilityInteract <= interactionRate) {
+							interact(population, populationSize, rng);
+						}
+						if (probabilityMigrate <= migrationRate) {
+							migration(population, populationSize, individualA, rng);
+						}
 					}
 				}
 				total = check(population, populationSize);
 				double Freq = (static_cast<double>(1000-total))/1000;
 #pragma omp critical
 				{
-                    myOutput << migrationRate << "," << changeTendencyA << "," << changeTendencyB << "," << ChangeTendDif << "," << Freq << std::endl;
+                    myOutput << migrationRate << "," << interactionRate << "," << changeTendencyA << "," << changeTendencyB << "," << ChangeTendDif << "," << Freq << std::endl;
                     // we are interested in the cases where Delta c > 0, as we expect type I to fixate when Delta c < 0
 					if (changeTendencyA >= changeTendencyB)
-                        myOutput2 << migrationRate << "," << changeTendencyA << "," << changeTendencyB << "," << ChangeTendDif << "," << Freq << std::endl;
+                        myOutput2 << migrationRate << "," << interactionRate << "," << changeTendencyA << "," << changeTendencyB << "," << ChangeTendDif << "," << Freq << std::endl;
 				}
 		}
 	}
