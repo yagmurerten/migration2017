@@ -6,13 +6,12 @@
 #include "individual.h"
 #include "random.h"
 
-#include <cassert>
 #include <climits>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <fstream>
 #include <iostream>
-#include <math.h>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -83,15 +82,17 @@ public:
 static void parameterCombinations(std::vector<Parameters> &parameters) {
 	const std::vector<double> valuesA{1.0};
 	const std::vector<double> valuesB{0.0, 0.25, 0.5, 0.75, 1.0};
-	const std::vector<std::vector<double>> values2{{0.01,0.99}, {0.01,0.19}, {0.01, 0.09}, {0.05, 0.95	}, {0.05, 0.45}, {0.1, 0.9}};
+	const std::vector<double> values2a{ 0.01, 0.1, 0.25 };
+	const std::vector<double> values2b{ 0.75, 0.9, 0.99 };
 	const std::vector<double> values3{0.1,0.5};
-	parameters.reserve(60);
+	parameters.reserve(90);
 			for (double change_tendency_A : valuesA)
 				for (double change_tendency_B : valuesB)
-					for (std::vector<double> migration_interaction: values2)
-						for (double interactionTendencyOther : values3)
-                			parameters.push_back(Parameters(change_tendency_A,
-							change_tendency_B, migration_interaction[0], migration_interaction[1], interactionTendencyOther));
+					for (double migration: values2a)
+						for(double interaction: values2b)
+							for (double interactionTendencyOther : values3)
+                				parameters.push_back(Parameters(change_tendency_A,
+								change_tendency_B, migration, interaction, interactionTendencyOther));
 }
 
 int main() {
